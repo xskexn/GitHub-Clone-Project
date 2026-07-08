@@ -127,3 +127,32 @@ def get_remote_master_hash(git_url, username, password):
     assert master_ref == b'refs/heads/master'
     assert len(master_sha1) == 40
     return master_sha1.decode()
+
+
+def find_tree_objects(tree_sha1):
+    objects = {tree_sha1}
+    for mode, path, sha1 in read_tree(sha1=tree_sha1):
+        if stat.S_ISDIR(mode):
+            objects.update(find_tree_objects(sha1))
+        else:
+            objects.add(sha1)
+    return objects
+
+def find_commit_objects(commit_sha1):
+    objects = {commit_sha1}
+    obj_type, commit = read_object(commit_sha1)
+    assert obj_type == 'commit'
+    lines = commit.decode().splitlines()
+    tree = next(l[5:45] for l in lines if l.startswith('tree '))
+    objects.update(find_tree_objects(tree))
+    parents = (l[7:47] for l in lines if l.startswith('parent '))
+    for parent in parents:
+        objects.update(find_commit_objects(parent))
+    return objects
+
+def find_missing_objects(local_sha1, remote_sha1):
+    local_objects = find_commit_objects(local_sha1)
+    if remote_sha1 is None:
+        return local_objects
+    remote_objects = find_commit_objects(remote_sha1)
+    return local_objects - remote_objects
