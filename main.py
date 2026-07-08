@@ -98,7 +98,6 @@ def extract_lines(data):
     return lines
 
 def build_lines_data(lines):
-    """Build byte string from given lines to send to server."""
     result = []
     for line in lines:
         result.append('{:04x}'.format(len(line) + 5).encode())
@@ -106,3 +105,25 @@ def build_lines_data(lines):
         result.append(b'\n')
     result.append(b'0000')
     return b''.join(result)
+
+def http_request(url, username, password, data=None):
+    password_manager = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    password_manager.add_password(None, url, username, password)
+    auth_handler = urllib.request.HTTPBasicAuthHandler(password_manager)
+    opener = urllib.request.build_opener(auth_handler)
+    f = opener.open(url, data=data)
+    return f.read()
+
+
+def get_remote_master_hash(git_url, username, password):
+    url = git_url + '/info/refs?service=git-receive-pack'
+    response = http_request(url, username, password)
+    lines = extract_lines(response)
+    assert lines[0] == b'# service=git-receive-pack\n'
+    assert lines[1] == b''
+    if lines[2][:40] == b'0' * 40:
+        return None
+    master_sha1, master_ref = lines[2].split(b'\x00')[0].split()
+    assert master_ref == b'refs/heads/master'
+    assert len(master_sha1) == 40
+    return master_sha1.decode()
