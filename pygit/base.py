@@ -19,3 +19,5 @@ def write_tree (directory='.'):
 
 def is_ignored (path):
     return '.pygit' in Path(path).parts
+
+##Commit check
