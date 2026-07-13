@@ -7,7 +7,7 @@ def init ():
     os.makedirs (GIT_DIR)
     os.makedirs (f'{GIT_DIR}/objects')
 
-def hash_object (data, type_='blob'):
+def hash_object (data, type_='blob'): # //TODO  Review for possible upgrade of the function
     obj = type_.encode () + b'\x00' + data
     oid = hashlib.sha1 (obj).hexdigest ()
     with open (f'{GIT_DIR}/objects/{oid}', 'wb') as out:
