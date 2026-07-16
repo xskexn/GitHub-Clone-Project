@@ -9,7 +9,7 @@ def init():
 
 def update_ref(ref, oid):
     ref_path = f'{GIT_DIR}/{ref}'
-    os.makedirs (os.path.dirname (ref_path), exist_ok=True)
+    os.makedirs(os.path.dirname (ref_path), exist_ok=True)
     with open (ref_path, 'w') as f:
         f.write(oid)
 
