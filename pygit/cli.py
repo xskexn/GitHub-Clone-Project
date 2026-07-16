@@ -22,8 +22,11 @@ def parse_args ():
     hash_object_parser.set_defaults (func=hash_object)
     hash_object_parser.add_argument ('file')
 
+    #Creating the subcommand name
     cat_file_parser = commands.add_parser ('cat-file')
+    # Attaches the command to the actual python function
     cat_file_parser.set_defaults (func=cat_file)
+    # Registering the expected variable
     cat_file_parser.add_argument ('object')
 
     write_tree_parser = commands.add_parser ('write-tree')
