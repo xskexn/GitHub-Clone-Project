@@ -17,9 +17,9 @@ def init (args):
 
     data.init ()
 
-    print (f'Initialized empty pygit repository in {os.getcwd()}/{data.GIT_DIR}')
+    print (f'Initialised empty pygit repository in {os.getcwd()}/{data.GIT_DIR}')
 ```
-Initializes the physical workspace by creating a folder to store structural data like object (`objects/`) and reference points (`refs/heads`).
+Initialises the physical workspace by creating a folder to store structural data like object (`objects/`) and reference points (`refs/heads`).
 ### `hash-objects`
 
 ```python

@@ -5,19 +5,25 @@ from . import data
 
 def write_tree (directory='.'):
     entries = []
+    # loops through the current working directory
     with os.scandir (directory) as it:
         for entry in it:
             full = os.path.join(directory, entry.name)
+            # Checks if item is something in the 'gitIgnore' and just skips them (like .pygit directory)
             if is_ignored (full):
                 continue
-
+            # file found in the search after exploring the subfolders
             if entry.is_file (follow_symlinks=False):
                 type_ = 'blob'
+                # reading the contents
                 with open (full, 'rb') as f:
+                    # feeds it into the object hash function to get the oid (unique hash)
                     oid = data.hash_object (f.read ())
             elif entry.is_dir (follow_symlinks=False):
                 type_ = 'tree'
+                # this process is done recusively and called on all the subfolders until a file is reached
                 oid = write_tree (full)
+                # tree building step where all entires are sorted alphabethically into a strucutred plain text string
             entries.append ((entry.name, oid, type_))
 
     tree = ''.join (f'{type_} {oid} {name}\n'

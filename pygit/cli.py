@@ -40,7 +40,7 @@ def parse_args ():
 
 def init (args):
     data.init ()
-    print (f'Initialized empty pygit repository in {os.getcwd()}/{data.GIT_DIR}')
+    print (f'Initialised empty pygit repository in {os.getcwd()}/{data.GIT_DIR}')
 
 def hash_object (args):
     with open (args.file, 'rb') as f:
