@@ -120,6 +120,9 @@ def checkout(oid):
 def create_tag(name, oid):
     data.update_ref (f'refs/tags/{name}', oid)
 
+def create_branch (name, oid):
+    data.update_ref (f'refs/heads/{name}', oid)
+
 def iter_commits_and_parents(oids):
     oids = deque(oids)
     visited = set()

@@ -60,6 +60,11 @@ def parse_args():
     k_parser = commands.add_parser ('k')
     k_parser.set_defaults (func=k)
 
+    branch_parser = commands.add_parser ('branch')
+    branch_parser.set_defaults (func=branch)
+    branch_parser.add_argument ('name')
+    branch_parser.add_argument ('start_point', default='@', type=oid, nargs='?')
+
     return parser.parse_args()
 
 # Initialisation command creates a folder to store structural data
@@ -105,6 +110,10 @@ def checkout (args):
 # Adds an alias to the target commit facilitating checkouts by aliases
 def tag(args):
     base.create_tag(args.name, args.oid)
+
+def branch (args):
+    base.create_branch (args.name, args.start_point)
+    print (f'Branch {args.name} created at {args.start_point[:10]}')
 
 # Visualisation tool that draws all the refs and commits pointed by the ref
 def k(args):
