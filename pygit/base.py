@@ -1,6 +1,7 @@
 import os
 import itertools
 import operator
+import string
 
 from pathlib import Path
 from . import data
@@ -119,7 +120,22 @@ def checkout(oid):
 def create_tag(name, oid):
     data.update_ref (f'refs/tags/{name}', oid)
 
+def iter_commits_and_parents(oids):
+    oids = set(oids)
+    visited = set()
+
+    while oids:
+        oid = oids.pop()
+        if not oid or oid in visited:
+            continue
+        visited.add(oid)
+        yield oid
+
+        commit = get_commit(oid)
+        oids.add(commit.parent)
+
 def get_oid(name):
+    if name == '@': name = 'HEAD'
     refs_to_try = [
         f'{name}',
         f'refs/{name}',
@@ -130,7 +146,6 @@ def get_oid(name):
         if data.get_ref(ref):
             return data.get_ref(ref)
 
-    # Name is SHA1
     is_hex = all (c in string.hexdigits for c in name)
     if len(name) == 40 and is_hex:
         return name
