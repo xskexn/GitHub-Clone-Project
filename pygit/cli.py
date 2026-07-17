@@ -1,8 +1,8 @@
+import sys
 import argparse
 import textwrap
 import subprocess
 import os
-import sys
 
 from . import data
 from . import base
@@ -101,21 +101,40 @@ def log(args):
 
 # Restores previous snapshot to the desired commit by taking 
 def checkout (args):
-    base.checkout (args.oid)
+    base.checkout(args.oid)
 
 # Adds an alias to the target commit facilitating checkouts by aliases
 def tag(args):
     base.create_tag(args.name, args.oid)
 
 # Visualisation tool that draws all the refs and commits pointed by the ref
-def k (args):
+def k(args):
+    dot = 'digraph commits {\n'
     oids = set ()
+
     for refname, ref in data.iter_refs ():
-        print (refname, ref)
+        dot += f'"{refname}" [shape=note]\n'
+        dot += f'"{refname}" -> "{ref}"\n'
         oids.add (ref)
 
     for oid in base.iter_commits_and_parents (oids):
         commit = base.get_commit (oid)
-        print (oid)
+        dot += f'"{oid}" [shape=box style=filled label="{oid[:10]}"]\n'
         if commit.parent:
-            print ('Parent', commit.parent)
+            dot += f'"{oid}" -> "{commit.parent}"\n'
+
+    dot += '}'
+    print (dot)
+
+    try:
+        with subprocess.Popen(
+            ['dot', '-Tpng', '-o', '.gitgraph.png'],
+            stdin=subprocess.PIPE) as proc:
+            
+            proc.communicate(dot.encode()) 
+            
+        # Automatically open the generated image in Windows
+        os.startfile('.gitgraph.png')
+        
+    except FileNotFoundError:
+        print("Error: Graphviz is not installed or 'dot' is not in your system PATH.")
