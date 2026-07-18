@@ -65,8 +65,12 @@ def parse_args():
     branch_parser.add_argument('name', nargs='?')
     branch_parser.add_argument('start_point', default='@', type=oid, nargs='?')
 
-    status_parser = commands.add_parser ('status')
-    status_parser.set_defaults (func=status)
+    status_parser = commands.add_parser('status')
+    status_parser.set_defaults(func=status)
+
+    reset_parser = commands.add_parser('reset')
+    reset_parser.set_defaults(func=reset)
+    reset_parser.add_argument('commit', type=oid)
 
     return parser.parse_args()
 
@@ -171,3 +175,6 @@ def k(args):
         
     except FileNotFoundError:
         print("Error: Graphviz is not installed or 'dot' is not in your system PATH.")
+
+def reset(args):
+    base.reset(args.commit)
