@@ -62,7 +62,7 @@ def parse_args():
 
     branch_parser = commands.add_parser('branch')
     branch_parser.set_defaults(func=branch)
-    branch_parser.add_argument('name')
+    branch_parser.add_argument('name', nargs='?')
     branch_parser.add_argument('start_point', default='@', type=oid, nargs='?')
 
     status_parser = commands.add_parser ('status')
@@ -99,10 +99,15 @@ def commit(args):
 
 # Walks the list of commits and prints them 
 def log(args):
+    refs = {}
+    for refname, ref in data.iter_refs ():
+        refs.setdefault (ref.value, []).append (refname)
+
     for oid in base.iter_commits_and_parents({args.oid}):
         commit = base.get_commit(oid)
 
-        print(f'commit {oid}\n')
+        refs_str = f' ({", ".join (refs[oid])})' if oid in refs else ''
+        print(f'commit {oid}{refs_str}\n')
         print(textwrap.indent(commit.message, '    '))
         print('')
 
@@ -116,17 +121,23 @@ def tag(args):
 
 # Creating a new branch to facilitate the chekcout feature
 def branch(args):
-    base.create_branch(args.name, args.start_point)
-    print(f'Branch {args.name} created at {args.start_point[:10]}')
+    if not args.name:
+        current = base.get_branch_name()
+        for branch in base.iter_branch_names():
+            prefix = '*' if branch == current else ' '
+            print (f'{prefix} {branch}')
+    else:
+        base.create_branch(args.name, args.start_point)
+        print(f'Branch {args.name} created at {args.start_point[:10]}')
 
 # Prints information about the current working directory
-def status (args):
-    HEAD = base.get_oid ('@')
-    branch = base.get_branch_name ()
+def status(args):
+    HEAD = base.get_oid('@')
+    branch = base.get_branch_name()
     if branch:
-        print (f'On branch {branch}')
+        print(f'On branch {branch}')
     else:
-        print (f'HEAD detached at {HEAD[:10]}')
+        print(f'HEAD detached at {HEAD[:10]}')
 
 # Visualisation tool that draws all the refs and commits pointed by the ref
 def k(args):
