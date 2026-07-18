@@ -57,10 +57,13 @@ def get_tree(oid, base_path=''):
             assert False, f'Unknown tree entry {type_}'
     return result
 
+# Used to clean up the file strucuture before reconstructing past version of the code
 def _empty_current_directory():
+    # taverses file system from bottom up 
     for root, dirnames, filenames in os.walk ('.', topdown=False):
         for filename in filenames:
             path = os.path.relpath (f'{root}/{filename}')
+            # calls is_ignored to see if .pygit directory and files meant to be kept and skips over them
             if is_ignored(path) or not os.path.isfile (path):
                 continue
             os.remove(path)
@@ -72,7 +75,6 @@ def _empty_current_directory():
                 os.rmdir(path)
             except (FileNotFoundError, OSError):
                 # Deletion might fail if the directory contains ignored files,
-                # so it's OK
                 pass
 
 def read_tree(tree_oid):
@@ -82,13 +84,17 @@ def read_tree(tree_oid):
         with open(path, 'wb') as f:
             f.write(data.get_object (oid))
 
+# Build data structure that budles a directory snapshot to a historical timeline
 def commit(message):
+    # writes tree <hash> containing the current workspace snapshot
     commit = f'tree {write_tree ()}\n'
     HEAD = data.get_ref('HEAD').value
+    # If a previous commit exists in HEAD, it adds a line saying parent <hash>
     if HEAD:
         commit += f'parent {HEAD}\n'
     commit += '\n'
     commit += f'{message}\n'
+    # hashes  text file into .pygit/objects directory and points HEAD directly to new commit hash
     oid = data.hash_object(commit.encode(), 'commit')
     data.update_ref('HEAD', data.RefValue (symbolic=False, value=oid))
     return oid
@@ -97,36 +103,42 @@ Commit = namedtuple('Commit', ['tree', 'parent', 'message'])
 
 def get_commit(oid):
     parent = None
-
+    # reads commit by parsing the custom text layout 
     commit = data.get_object (oid, 'commit').decode()
     lines = iter (commit.splitlines())
+    # reads all the lines until the blank newline added in the commit text layout
     for line in itertools.takewhile(operator.truth, lines):
         key, value = line.split(' ', 1)
+        # header parsing 
         if key == 'tree':
             tree = value
         elif key == 'parent':
             parent = value
         else:
             assert False, f'Unknown field {key}'
-
+    # commit message parsing (after the blaknk line)
     message = '\n'.join(lines)
     return Commit(tree=tree, parent=parent, message=message)
 
 def checkout(oid):
+    # gets paesed commit data
     commit = get_commit(oid)
+    # cleans the project folder and unpackages the historical files
     read_tree(commit.tree)
-    data.update_ref ('HEAD', data.RefValue (symbolic=False, value=oid))
+    # update the head to new active position
+    data.update_ref('HEAD', data.RefValue (symbolic=False, value=oid))
 
 def create_tag(name, oid):
-    data.update_ref (f'refs/tags/{name}', data.RefValue (symbolic=False, value=oid))
+    data.update_ref(f'refs/tags/{name}', data.RefValue (symbolic=False, value=oid))
 
-def create_branch (name, oid):
-    data.update_ref (f'refs/tags/{name}', data.RefValue (symbolic=False, value=oid))
+def create_branch(name, oid):
+    data.update_ref(f'refs/heads/{name}', data.RefValue (symbolic=False, value=oid))
 
+# used to build and draw cisual graphical DAG representation of the commit history
 def iter_commits_and_parents(oids):
     oids = deque(oids)
     visited = set()
-
+    # walks back through commit history from commit to parent
     while oids:
         oid = oids.popleft()
         if not oid or oid in visited:
@@ -137,8 +149,11 @@ def iter_commits_and_parents(oids):
         commit = get_commit(oid)
         oids.appendleft(commit.parent)
 
+# translator used to prevent the constant input of 40-char hashes
 def get_oid(name):
+    # '@' shortcut to directly check HEAD
     if name == '@': name = 'HEAD'
+    # accepts alphanumeric input
     refs_to_try = [
         f'{name}',
         f'refs/{name}',
@@ -146,9 +161,9 @@ def get_oid(name):
         f'refs/heads/{name}',
     ]
     for ref in refs_to_try:
-        if data.get_ref (ref).value:
+        if data.get_ref(ref, deref=False).value:
             return data.get_ref (ref).value
-
+    # accepts hexadecimal inputs
     is_hex = all (c in string.hexdigits for c in name)
     if len(name) == 40 and is_hex:
         return name
