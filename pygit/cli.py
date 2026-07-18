@@ -50,7 +50,7 @@ def parse_args():
 
     checkout_parser = commands.add_parser('checkout')
     checkout_parser.set_defaults(func=checkout)
-    checkout_parser.add_argument('oid', type=oid)
+    checkout_parser.add_argument('commit')
 
     tag_parser = commands.add_parser ('tag')
     tag_parser.set_defaults(func=tag)
@@ -65,11 +65,14 @@ def parse_args():
     branch_parser.add_argument('name')
     branch_parser.add_argument('start_point', default='@', type=oid, nargs='?')
 
+    status_parser = commands.add_parser ('status')
+    status_parser.set_defaults (func=status)
+
     return parser.parse_args()
 
 # Initialisation command creates a folder to store structural data
 def init(args):
-    data.init()
+    base.init()
     print (f'Initialised empty pygit repository in {os.getcwd()}/{data.GIT_DIR}')
 
 # Compresses target file into 40-char sha-1 crypto file and saves into object folder
@@ -104,17 +107,26 @@ def log(args):
         print('')
 
 # Restores previous snapshot to the desired commit by taking 
-def checkout (args):
-    base.checkout(args.oid)
+def checkout(args):
+    base.checkout(args.commit)
 
 # Adds an alias to the target commit facilitating checkouts by aliases
 def tag(args):
     base.create_tag(args.name, args.oid)
 
 # Creating a new branch to facilitate the chekcout feature
-def branch (args):
+def branch(args):
     base.create_branch(args.name, args.start_point)
-    print (f'Branch {args.name} created at {args.start_point[:10]}')
+    print(f'Branch {args.name} created at {args.start_point[:10]}')
+
+# Prints information about the current working directory
+def status (args):
+    HEAD = base.get_oid ('@')
+    branch = base.get_branch_name ()
+    if branch:
+        print (f'On branch {branch}')
+    else:
+        print (f'HEAD detached at {HEAD[:10]}')
 
 # Visualisation tool that draws all the refs and commits pointed by the ref
 def k(args):

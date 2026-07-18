@@ -7,6 +7,10 @@ from pathlib import Path
 from . import data
 from collections import deque, namedtuple
 
+def init ():
+    data.init ()
+    data.update_ref ('HEAD', data.RefValue (symbolic=True, value='refs/heads/master'))
+
 def write_tree(directory='.'):
     entries = []
     # loops through the current working directory
@@ -99,6 +103,16 @@ def commit(message):
     data.update_ref('HEAD', data.RefValue (symbolic=False, value=oid))
     return oid
 
+# Status command to print infromation about the current working directory
+def get_branch_name ():
+    HEAD = data.get_ref ('HEAD', deref=False)
+    if not HEAD.symbolic:
+        return None
+    HEAD = HEAD.value
+    assert HEAD.startswith ('refs/heads/')
+    return os.path.relpath (HEAD, 'refs/heads')
+
+
 Commit = namedtuple('Commit', ['tree', 'parent', 'message'])
 
 def get_commit(oid):
@@ -120,19 +134,30 @@ def get_commit(oid):
     message = '\n'.join(lines)
     return Commit(tree=tree, parent=parent, message=message)
 
-def checkout(oid):
+def checkout(name):
+    oid = get_oid(name)
     # gets paesed commit data
     commit = get_commit(oid)
     # cleans the project folder and unpackages the historical files
     read_tree(commit.tree)
     # update the head to new active position
-    data.update_ref('HEAD', data.RefValue (symbolic=False, value=oid))
+
+    if is_branch (name):
+        HEAD = data.RefValue (symbolic=True, value=f'refs/heads/{name}')
+    else:
+        HEAD = data.RefValue (symbolic=False, value=oid)
+
+    data.update_ref ('HEAD', HEAD, deref=False)
 
 def create_tag(name, oid):
     data.update_ref(f'refs/tags/{name}', data.RefValue (symbolic=False, value=oid))
 
 def create_branch(name, oid):
     data.update_ref(f'refs/heads/{name}', data.RefValue (symbolic=False, value=oid))
+
+def is_branch (branch):
+    return data.get_ref (f'refs/heads/{branch}').value is not None
+
 
 # used to build and draw cisual graphical DAG representation of the commit history
 def iter_commits_and_parents(oids):
