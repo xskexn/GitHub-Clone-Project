@@ -1,4 +1,8 @@
+import subprocess
 from collections import defaultdict
+from tempfile import NamedTemporaryFile as Temp
+
+from . import data
 
 # Takes a list of tree and returns them grouped by filename
 def compare_trees(*trees):
@@ -10,11 +14,36 @@ def compare_trees(*trees):
     for path, oids in entries.items():
         yield(path, *oids)
 
+def iter_changed_files(t_from, t_to):
+    for path, o_from, o_to in compare_trees(t_from, t_to):
+        if o_from != o_to:
+            action = ('new file' if not o_from else
+                      'deleted' if not o_to else
+                      'modified')
+            yield path, action
+
+
 # displays all the chnaged files
 def diff_trees(t_from, t_to):
-    output = ''
+    output = b''
     # returns all entries with different OID
     for path, o_from, o_to in compare_trees(t_from, t_to):
         if o_from != o_to:
-            output += f'changed: {path}\n'
+            output += diff_blobs(o_from, o_to, path)
     return output
+
+def diff_blobs(o_from, o_to, path='blob'):
+    with Temp() as f_from, Temp() as f_to:
+        for oid, f in ((o_from, f_from), (o_to, f_to)):
+            if oid:
+                f.write(data.get_object(oid))
+                f.flush()
+
+        with subprocess.Popen(
+            ['diff', '--unified', '--show-c-function',
+             '--label', f'a/{path}', f_from.name,
+             '--label', f'b/{path}', f_to.name],
+            stdout=subprocess.PIPE) as proc:
+            output, _ = proc.communicate ()
+
+        return output

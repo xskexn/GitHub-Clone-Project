@@ -73,6 +73,10 @@ def parse_args():
     status_parser = commands.add_parser('status')
     status_parser.set_defaults(func=status)
 
+    diff_parser = commands.add_parser('diff')
+    diff_parser.set_defaults(func=_diff)
+    diff_parser.add_argument('commit', default='@', type=oid, nargs='?')
+
     reset_parser = commands.add_parser('reset')
     reset_parser.set_defaults(func=reset)
     reset_parser.add_argument('commit', type=oid)
@@ -136,7 +140,16 @@ def show(args):
     _print_commit(args.oid, commit)
     result = diff.diff_trees(
         base.get_tree(parent_tree), base.get_tree(commit.tree))
-    print (result)
+    sys.stdout.flush()
+    sys.stdout.buffer.write(result)
+
+# Keeps track of all the changes by comparing working tree to commits
+def _diff (args):
+    tree = args.commit and base.get_commit (args.commit).tree
+
+    result = diff.diff_trees (base.get_tree (tree), base.get_working_tree ())
+    sys.stdout.flush ()
+    sys.stdout.buffer.write (result)
 
 # Restores previous snapshot to the desired commit by taking 
 def checkout(args):
@@ -165,6 +178,11 @@ def status(args):
         print(f'On branch {branch}')
     else:
         print(f'HEAD detached at {HEAD[:10]}')
+
+    print('\nChanges to be committed:\n')
+    HEAD_tree = HEAD and base.get_commit(HEAD).tree
+    for path, action in diff.iter_changed_files(base.get_tree (HEAD_tree), base.get_working_tree ()):
+        print(f'{action:>12}: {path}')
 
 # Visualisation tool that draws all the refs and commits pointed by the ref
 def k(args):
