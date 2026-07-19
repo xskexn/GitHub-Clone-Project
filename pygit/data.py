@@ -1,9 +1,22 @@
 import hashlib
 import os
+import shutil
 
 from collections import namedtuple
+from contextlib import contextmanager
 
-GIT_DIR = '.pygit'
+# Will be initialized in cli.main()
+GIT_DIR = None
+
+
+@contextmanager
+def change_git_dir(new_dir):
+    global GIT_DIR
+    old_dir = GIT_DIR
+    GIT_DIR = f'{new_dir}/.pygit'
+    yield
+    GIT_DIR = old_dir
+
 
 def init():
     os.makedirs(GIT_DIR)
@@ -82,3 +95,14 @@ def get_object(oid, expected='blob'):
     if expected is not None:
         assert type_ == expected, f'Expected {expected}, got {type_}'
     return content
+
+
+def object_exists(oid):
+    return os.path.isfile(f'{GIT_DIR}/objects/{oid}')
+
+
+def fetch_object_if_missing(oid, remote_git_dir):
+    if object_exists(oid):
+        return
+    remote_git_dir += '/.pygit'
+    shutil.copy(f'{remote_git_dir}/objects/{oid}', f'{GIT_DIR}/objects/{oid}')

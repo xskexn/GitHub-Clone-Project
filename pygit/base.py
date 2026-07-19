@@ -184,12 +184,19 @@ def merge(other):
     HEAD = data.get_ref('HEAD').value
     assert HEAD
     merge_base = get_merge_base (other, HEAD)
-    c_base = get_commit (merge_base)
-    c_HEAD = get_commit(HEAD)
     c_other = get_commit(other)
+
+    # Handles fast-forward merge
+    if merge_base == HEAD:
+        read_tree(c_other.tree)
+        data.update_ref('HEAD', data.RefValue(symbolic=False, value=other))
+        print('Fast-forward merge, no need to commit')
+        return
 
     data.update_ref('MERGE_HEAD', data.RefValue(symbolic=False, value=other))
 
+    c_base = get_commit(merge_base)
+    c_HEAD = get_commit(HEAD)
     read_tree_merged(c_base.tree, c_HEAD.tree, c_other.tree)
     print('Merged in working tree\nPlease commit')
 
@@ -231,6 +238,30 @@ def iter_commits_and_parents(oids):
         oids.extendleft(commit.parents[:1])
         # Return other parents later
         oids.extend(commit.parents[1:])
+
+def iter_objects_in_commits (oids):
+    visited = set ()
+
+    def iter_objects_in_tree(oid):
+        visited.add(oid) 
+        # Must yield the oid before acccessing it (to allow caller to fetch it if needed)
+        yield oid
+
+        for type_, oid, _ in _iter_tree_entries(oid):
+            if oid not in visited:
+                if type_ == 'tree':
+                    yield from iter_objects_in_tree(oid)
+                else:
+                    visited.add(oid)
+                    yield oid
+
+    for oid in iter_commits_and_parents(oids):
+        yield oid
+        commit = get_commit(oid)
+
+        if commit.tree not in visited:
+            yield from iter_objects_in_tree(commit.tree)
+
 
 # translator used to prevent the constant input of 40-char hashes
 def get_oid(name):
