@@ -85,6 +85,11 @@ def parse_args():
     merge_parser.set_defaults (func=merge)
     merge_parser.add_argument ('commit', type=oid)
 
+    merge_base_parser = commands.add_parser('merge-base')
+    merge_base_parser.set_defaults(func=merge_base)
+    merge_base_parser.add_argument('commit1', type=oid)
+    merge_base_parser.add_argument('commit2', type=oid)
+
     return parser.parse_args()
 
 # Initialisation command creates a folder to store structural data
@@ -183,6 +188,10 @@ def status(args):
     else:
         print(f'HEAD detached at {HEAD[:10]}')
 
+    MERGE_HEAD = data.get_ref('MERGE_HEAD').value
+    if MERGE_HEAD:
+        print(f'Merging with {MERGE_HEAD[:10]}')
+
     print('\nChanges to be committed:\n')
     HEAD_tree = HEAD and base.get_commit(HEAD).tree
     for path, action in diff.iter_changed_files(base.get_tree (HEAD_tree), base.get_working_tree ()):
@@ -222,5 +231,10 @@ def k(args):
 def reset(args):
     base.reset(args.commit)
 
+# Merges commits together
 def merge(args):
     base.merge(args.commit)
+
+# Finds common parents of two branches and merges the commits together
+def merge_base(args):
+    print(base.get_merge_base(args.commit1, args.commit2))
