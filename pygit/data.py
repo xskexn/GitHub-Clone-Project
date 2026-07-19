@@ -1,13 +1,13 @@
 import hashlib
-import os
 import shutil
+import json
+import os
 
 from collections import namedtuple
 from contextlib import contextmanager
 
 # Will be initialized in cli.main()
 GIT_DIR = None
-
 
 @contextmanager
 def change_git_dir(new_dir):
@@ -16,7 +16,6 @@ def change_git_dir(new_dir):
     GIT_DIR = f'{new_dir}/.pygit'
     yield
     GIT_DIR = old_dir
-
 
 def init():
     os.makedirs(GIT_DIR)
@@ -45,7 +44,6 @@ def get_ref(ref, deref=True):
 def delete_ref(ref, deref=True):
     ref = _get_ref_internal(ref, deref)[0]
     os.remove(f'{GIT_DIR}/{ref}')
-
 
 def _get_ref_internal(ref, deref):
     ref_path = f'{GIT_DIR}/{ref}'
@@ -77,6 +75,19 @@ def iter_refs(prefix='', deref=True):
     if MERGE_HEAD:
         print(f'Merging with {MERGE_HEAD[:10]}')
 
+@contextmanager
+def get_index ():
+    index = {}
+    
+    if os.path.isfile (f'{GIT_DIR}/index'):
+        with open (f'{GIT_DIR}/index') as f:
+            index = json.load (f)
+
+    yield index
+
+    with open (f'{GIT_DIR}/index', 'w') as f:
+        json.dump (index, f)
+
 def hash_object(data, type_='blob'):
     obj = type_.encode() + b'\x00' + data
     oid = hashlib.sha1(obj).hexdigest()
@@ -96,10 +107,8 @@ def get_object(oid, expected='blob'):
         assert type_ == expected, f'Expected {expected}, got {type_}'
     return content
 
-
 def object_exists(oid):
     return os.path.isfile(f'{GIT_DIR}/objects/{oid}')
-
 
 def fetch_object_if_missing(oid, remote_git_dir):
     if object_exists(oid):
