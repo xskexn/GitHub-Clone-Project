@@ -5,6 +5,7 @@ import string
 
 from pathlib import Path
 from . import data
+from . import diff
 from collections import deque, namedtuple
 
 def init ():
@@ -101,10 +102,17 @@ def read_tree(tree_oid):
         with open(path, 'wb') as f:
             f.write(data.get_object (oid))
 
+def read_tree_merged(t_HEAD, t_other):
+    _empty_current_directory()
+    for path, blob in diff.merge_trees(get_tree (t_HEAD), get_tree(t_other)).items():
+        os.makedirs(f'./{os.path.dirname(path)}', exist_ok=True)
+        with open (path, 'wb') as f:
+            f.write(blob)
+
 # Build data structure that budles a directory snapshot to a historical timeline
 def commit(message):
     # writes tree <hash> containing the current workspace snapshot
-    commit = f'tree {write_tree ()}\n'
+    commit = f'tree {write_tree()}\n'
     HEAD = data.get_ref('HEAD').value
     # If a previous commit exists in HEAD, it adds a line saying parent <hash>
     if HEAD:
@@ -117,13 +125,13 @@ def commit(message):
     return oid
 
 # Status command to print infromation about the current working directory
-def get_branch_name ():
-    HEAD = data.get_ref ('HEAD', deref=False)
+def get_branch_name():
+    HEAD = data.get_ref('HEAD', deref=False)
     if not HEAD.symbolic:
         return None
     HEAD = HEAD.value
-    assert HEAD.startswith ('refs/heads/')
-    return os.path.relpath (HEAD, 'refs/heads')
+    assert HEAD.startswith('refs/heads/')
+    return os.path.relpath(HEAD, 'refs/heads')
 
 
 Commit = namedtuple('Commit', ['tree', 'parent', 'message'])
@@ -155,15 +163,24 @@ def checkout(name):
     read_tree(commit.tree)
     # update the head to new active position
 
-    if is_branch (name):
-        HEAD = data.RefValue (symbolic=True, value=f'refs/heads/{name}')
+    if is_branch(name):
+        HEAD = data.RefValue(symbolic=True, value=f'refs/heads/{name}')
     else:
-        HEAD = data.RefValue (symbolic=False, value=oid)
+        HEAD = data.RefValue(symbolic=False, value=oid)
 
-    data.update_ref ('HEAD', HEAD, deref=False)
+    data.update_ref('HEAD', HEAD, deref=False)
 
 def reset(oid):
-    data.update_ref('HEAD', data.RefValue (symbolic=False, value=oid))
+    data.update_ref('HEAD', data.RefValue(symbolic=False, value=oid))
+
+def merge(other):
+    HEAD = data.get_ref('HEAD').value
+    assert HEAD
+    c_HEAD = get_commit(HEAD)
+    c_other = get_commit(other)
+
+    read_tree_merged(c_HEAD.tree, c_other.tree)
+    print('Merged in working tree')
 
 def create_tag(name, oid):
     data.update_ref(f'refs/tags/{name}', data.RefValue (symbolic=False, value=oid))
@@ -178,11 +195,11 @@ def iter_branch_names ():
 def is_branch (branch):
     return data.get_ref (f'refs/heads/{branch}').value is not None
 
-
 # used to build and draw cisual graphical DAG representation of the commit history
 def iter_commits_and_parents(oids):
     oids = deque(oids)
     visited = set()
+    
     # walks back through commit history from commit to parent
     while oids:
         oid = oids.popleft()
@@ -205,11 +222,13 @@ def get_oid(name):
         f'refs/tags/{name}',
         f'refs/heads/{name}',
     ]
+
     for ref in refs_to_try:
         if data.get_ref(ref, deref=False).value:
             return data.get_ref (ref).value
     # accepts hexadecimal inputs
     is_hex = all (c in string.hexdigits for c in name)
+
     if len(name) == 40 and is_hex:
         return name
 
