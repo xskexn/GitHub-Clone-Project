@@ -26,8 +26,13 @@ def update_ref(ref, value, deref=True):
 
         f.write(value)
 
-def get_ref (ref, deref=True):
+def get_ref(ref, deref=True):
     return _get_ref_internal(ref, deref)[1]
+
+def delete_ref(ref, deref=True):
+    ref = _get_ref_internal(ref, deref)[0]
+    os.remove(f'{GIT_DIR}/{ref}')
+
 
 def _get_ref_internal(ref, deref):
     ref_path = f'{GIT_DIR}/{ref}'

@@ -100,7 +100,7 @@ def hash_object(args):
 # Retrives content of the file by feeding it the 40-char address
 def cat_file(args):
     sys.stdout.flush()
-    sys.stdout.buffer.write(data.get_object (args.object, expected=None))
+    sys.stdout.buffer.write(data.get_object(args.object, expected=None))
 
 # Takes a snapshot of the current working directory 
 def write_tree(args):
@@ -116,44 +116,44 @@ def commit(args):
 
 # prints commits message in a clean format
 def _print_commit(oid, commit, refs=None):
-    refs_str = f' ({", ".join (refs)})' if refs else ''
+    refs_str = f'({", ".join (refs)})' if refs else ''
     print(f'commit {oid}{refs_str}\n')
-    print(textwrap.indent (commit.message, '    '))
+    print(textwrap.indent(commit.message, '    '))
     print('')
 
 # Walks the list of commits and prints them 
 def log(args):
     refs = {}
-    for refname, ref in data.iter_refs ():
-        refs.setdefault (ref.value, []).append (refname)
+    for refname, ref in data.iter_refs():
+        refs.setdefault (ref.value, []).append(refname)
 
     for oid in base.iter_commits_and_parents({args.oid}):
         commit = base.get_commit(oid)
-        _print_commit (oid, commit, refs.get (oid))
+        _print_commit(oid, commit, refs.get(oid))
 
 # The function shows various types of commit objects
 def show(args):
     if not args.oid:
         return
+    
     commit = base.get_commit(args.oid)
     parent_tree = None
 
-    if commit.parent:
-        parent_tree = base.get_commit(commit.parent).tree
+    if commit.parents:
+        parent_tree = base.get_commit(commit.parents[0]).tree
 
     _print_commit(args.oid, commit)
-    result = diff.diff_trees(
-        base.get_tree(parent_tree), base.get_tree(commit.tree))
+    result = diff.diff_trees(base.get_tree(parent_tree), base.get_tree(commit.tree))
     sys.stdout.flush()
     sys.stdout.buffer.write(result)
 
 # Keeps track of all the changes by comparing working tree to commits
-def _diff (args):
-    tree = args.commit and base.get_commit (args.commit).tree
+def _diff(args):
+    tree = args.commit and base.get_commit(args.commit).tree
 
-    result = diff.diff_trees (base.get_tree (tree), base.get_working_tree ())
-    sys.stdout.flush ()
-    sys.stdout.buffer.write (result)
+    result = diff.diff_trees(base.get_tree(tree), base.get_working_tree ())
+    sys.stdout.flush()
+    sys.stdout.buffer.write(result)
 
 # Restores previous snapshot to the desired commit by taking 
 def checkout(args):
@@ -202,17 +202,14 @@ def k(args):
     for oid in base.iter_commits_and_parents(oids):
         commit = base.get_commit(oid)
         dot += f'"{oid}" [shape=box style=filled label="{oid[:10]}"]\n'
-        if commit.parent:
-            dot += f'"{oid}" -> "{commit.parent}"\n'
+        for parent in commit.parents:
+            dot += f'"{oid}" -> "{parent}"\n'
 
     dot += '}'
     print(dot)
 
     try:
-        with subprocess.Popen(
-            ['dot', '-Tpng', '-o', '.gitgraph.png'],
-            stdin=subprocess.PIPE) as proc:
-            
+        with subprocess.Popen(['dot', '-Tpng', '-o', '.gitgraph.png'], stdin=subprocess.PIPE) as proc:
             proc.communicate(dot.encode()) 
             
         # Automatically open the generated graph image in Windows
