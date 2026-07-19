@@ -235,6 +235,6 @@ def reset(args):
 def merge(args):
     base.merge(args.commit)
 
-# Finds common parents of two branches and merges the commits together
+# Finds common ancestor of a commit and merges them
 def merge_base(args):
     print(base.get_merge_base(args.commit1, args.commit2))
