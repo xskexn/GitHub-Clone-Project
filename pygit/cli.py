@@ -213,8 +213,11 @@ def branch(args):
 
 # Prints information about the current working directory
 def status(args):
+    repo_path = os.getcwd()
     HEAD = base.get_oid('@')
     branch = base.get_branch_name()
+    git_dir = os.path.join(repo_path, data.GIT_DIR)
+
     if branch:
         print(f'On branch {branch}')
     else:
@@ -232,6 +235,13 @@ def status(args):
     print('\nChanges not staged for commit:\n')
     for path, action in diff.iter_changed_files(base.get_index_tree(), base.get_working_tree()):
         print(f'{action:>12}: {path}')
+
+    if os.path.exists(git_dir):
+            print(f"Active PyGit Repository: {repo_path}")
+            head_ref = data.get_ref('HEAD').value
+            print(f"HEAD is at: {head_ref if head_ref else 'No commits yet'}")
+    else:
+        print(f"Fatal: Not a pygit repository (or any of the parent directories): {repo_path}")
 
 # Visualisation tool that draws all the refs and commits pointed by the ref
 def k(args):

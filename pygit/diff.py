@@ -1,4 +1,5 @@
 import subprocess
+import difflib
 from collections import defaultdict
 from tempfile import NamedTemporaryFile as Temp
 
@@ -32,25 +33,25 @@ def diff_trees(t_from, t_to):
             output += diff_blobs(o_from, o_to, path)
     return output
 
-def diff_blobs(o_from, o_to, path='blob'):
-    with Temp() as f_from, Temp() as f_to:
-        for oid, f in ((o_from, f_from), (o_to, f_to)):
-            if oid:
-                f.write(data.get_object(oid))
-                f.flush()
+def diff_blobs(o_from, o_to, path=''):
+    # Fetch content from database (or empty bytes if object doesn't exist)
+    bytes_from = data.get_object(o_from) if o_from else b''
+    bytes_to = data.get_object(o_to) if o_to else b''
 
-        with subprocess.Popen(
-            ['diff', '--unified', '--show-c-function',
-             '--label', f'a/{path}', f_from.name,
-             '--label', f'b/{path}', f_to.name],
-            stdout=subprocess.PIPE) as proc:
-            output, _ = proc.communicate()
+    # Convert raw bytes into text lines
+    lines_from = bytes_from.decode('utf-8', errors='replace').splitlines(keepends=True)
+    lines_to = bytes_to.decode('utf-8', errors='replace').splitlines(keepends=True)
 
-        return output
-    
-    for path, o_HEAD, o_other in compare_trees(t_HEAD, t_other):
-        tree[path] = merge_blobs(o_HEAD, o_other)
-    return tree
+    # Generate standard unified diff lines
+    diff_lines = difflib.unified_diff(
+        lines_from,
+        lines_to,
+        fromfile=f'a/{path}',
+        tofile=f'b/{path}'
+    )
+
+    # Combine into a single string and return as bytes
+    return ''.join(diff_lines).encode('utf-8')
 
 def merge_trees(t_base, t_HEAD, t_other):
     tree = {}
