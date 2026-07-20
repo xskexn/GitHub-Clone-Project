@@ -25,15 +25,16 @@ def parse_args():
     init_parser = commands.add_parser('init')
     init_parser.set_defaults(func=init)
 
+    # Creating the subcommand name
+    # Attach the command to the actual python function
+    # Register the expected variable
+
     hash_object_parser = commands.add_parser('hash-object')
     hash_object_parser.set_defaults(func=hash_object)
     hash_object_parser.add_argument('file')
 
-    #Creating the subcommand name
     cat_file_parser = commands.add_parser('cat-file')
-    # Attaches the command to the actual python function
     cat_file_parser.set_defaults(func=cat_file)
-    # Registering the expected variable
     cat_file_parser.add_argument('object', type=oid)
 
     write_tree_parser = commands.add_parser('write-tree')
@@ -99,8 +100,9 @@ def parse_args():
 
     push_parser = commands.add_parser('push')
     push_parser.set_defaults(func=push)
-    push_parser.add_argument('remote')
-    push_parser.add_argument('branch')
+    push_parser.add_argument('url', help='HTTP repository URL')
+    push_parser.add_argument('--username', default=None, help='HTTP Basic Auth Username')
+    push_parser.add_argument('--password', default=None, help='HTTP Basic Auth Password')
 
     add_parser = commands.add_parser('add')
     add_parser.set_defaults(func=add)
@@ -174,14 +176,14 @@ def _diff(args):
 
     if args.commit:
         # If a commit was provided explicitly, diff from it
-        tree_from = base.get_tree(oid and base.get_commit (oid).tree)
+        tree_from = base.get_tree(oid and base.get_commit(oid).tree)
 
     if args.cached:
         tree_to = base.get_index_tree()
         if not args.commit:
             # If no commit was provided, diff from HEAD
             oid = base.get_oid('@')
-            tree_from = base.get_tree(oid and base.get_commit (oid).tree)
+            tree_from = base.get_tree(oid and base.get_commit(oid).tree)
     else:
         tree_to = base.get_working_tree()
         if not args.commit:
@@ -291,7 +293,7 @@ def fetch (args):
 
 # Uploads objects and synchronises local refs 
 def push(args):
-    remote.push(args.remote, f'refs/heads/{args.branch}')
+    remote.push(args.url, username=args.username, password=args.password)
 
 # Creates a JSON index of the changed files
 def add(args):

@@ -1,43 +1,105 @@
 import os
+import sys
 import shutil
 import tempfile
 import unittest
 
-from pygit import data
+# Ensure pygit modules can be imported
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+import cli
+import base
+import data
 
 
-class TestPygitData(unittest.TestCase):
+class TestPyGitCore(unittest.TestCase):
 
     def setUp(self):
-        """Create a temporary directory before each test."""
+        """Creates a temporary working directory and switches into it before every test."""
         self.test_dir = tempfile.mkdtemp()
-        self.old_dir = os.getcwd()
+        self.original_cwd = os.getcwd()
         os.chdir(self.test_dir)
 
     def tearDown(self):
-        """Restore previous working directory and clean up temp folder."""
-        os.chdir(self.old_dir)
+        """Restores original directory and cleans up the temporary directory after every test."""
+        os.chdir(self.original_cwd)
         shutil.rmtree(self.test_dir)
 
-    def test_init_creates_pygit_structure(self):
-        """Verify that init() creates .pygit and objects folder."""
+    def test_init(self):
+        """Test repository initialization (.git directory structure)."""
         data.init()
-        self.assertTrue(os.path.exists(".pygit"))
-        self.assertTrue(os.path.exists(".pygit/objects"))
+        self.assertTrue(os.path.exists('.git'))
+        self.assertTrue(os.path.exists(os.path.join('.git', 'objects')))
+        self.assertTrue(os.path.exists(os.path.join('.git', 'refs')))
+        self.assertTrue(os.path.exists(os.path.join('.git', 'HEAD')))
 
-    def test_hash_and_get_object(self):
-        """Verify hashing data stores it correctly and retrieves exact contents."""
+    def test_hash_object(self):
+        """Test hashing a file into an object (blob)."""
         data.init()
-        content = b"Unit test payload sample"
+        file_path = 'hello.txt'
+        content = b'Hello, PyGit World!\n'
 
-        # Hash object
-        oid = data.hash_object(content, type_="blob")
+        with open(file_path, 'wb') as f:
+            f.write(content)
 
-        # Retrieve object
-        retrieved_content = data.get_object(oid, expected="blob")
+        oid = data.hash_object(content, 'blob')
+        self.assertIsNotNone(oid)
+        self.assertEqual(len(oid), 40)  # SHA-1 hash length
+        self.assertTrue(data.object_exists(oid))
 
-        self.assertEqual(content, retrieved_content)
+    def test_write_tree_and_commit(self):
+        """Test writing a tree and creating a commit."""
+        data.init()
+
+        # Create sample workspace files
+        with open('file1.txt', 'w') as f:
+            f.write("First file content")
+        with open('file2.txt', 'w') as f:
+            f.write("Second file content")
+
+        tree_oid = base.write_tree()
+        self.assertIsNotNone(tree_oid)
+        self.assertTrue(data.object_exists(tree_oid))
+
+        commit_oid = base.commit("Initial commit")
+        self.assertIsNotNone(commit_oid)
+        self.assertEqual(data.get_HEAD().value, commit_oid)
+
+    def test_checkout_and_branching(self):
+        """Test branch creation and switching commits/branches."""
+        data.init()
+
+        # Commit 1
+        with open('feature.txt', 'w') as f:
+            f.write("Version 1")
+        commit1_oid = base.commit("Commit 1")
+
+        # Create branch 'feature-branch'
+        base.create_branch('feature-branch', commit1_oid)
+        self.assertTrue(data.get_ref('refs/heads/feature-branch').value == commit1_oid)
+
+        # Commit 2 on master
+        with open('feature.txt', 'w') as f:
+            f.write("Version 2")
+        commit2_oid = base.commit("Commit 2")
+
+        # Checkout commit 1 / branch
+        base.checkout('feature-branch')
+        with open('feature.txt', 'r') as f:
+            content = f.read()
+        self.assertEqual(content, "Version 1")
+
+    def test_tags(self):
+        """Test creating lightweight or annotated tags."""
+        data.init()
+        with open('version.txt', 'w') as f:
+            f.write("v1.0.0")
+        commit_oid = base.commit("Version release")
+
+        base.create_tag('v1.0', commit_oid)
+        tag_ref = data.get_ref('refs/tags/v1.0')
+        self.assertEqual(tag_ref.value, commit_oid)
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()

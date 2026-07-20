@@ -1,46 +1,163 @@
-import os
+import struct
+import zlib
+import urllib.request
 from . import data
 from . import base
 
-REMOTE_REFS_BASE = 'refs/heads/'
-LOCAL_REFS_BASE = 'refs/remote/'
+# Git Packfile Object Type Mapping
+OBJECT_TYPES = {
+    'commit': 1,
+    'tree': 2,
+    'blob': 3,
+    'tag': 4,
+}
 
-def fetch(remote_path):
-    # gets refs from local server
-    refs = _get_remote_refs(remote_path, REMOTE_REFS_BASE)
+def http_request(url, username=None, password=None, data=None):
+    """Executes an HTTP request with optional Basic Authentication."""
+    password_manager = urllib.request.HTTPPasswordMgrWithDefaultRealm()
+    if username and password:
+        password_manager.add_password(None, url, username, password)
+    auth_handler = urllib.request.HTTPBasicAuthHandler(password_manager)
+    opener = urllib.request.build_opener(auth_handler)
+    
+    req = urllib.request.Request(url, data=data)
+    if data:
+        req.add_header('Content-Type', 'application/x-git-receive-pack-request')
+    
+    with opener.open(req) as f:
+        return f.read()
 
-        # Fetch missing objects by iterating and fetching on demand
-    for oid in base.iter_objects_in_commits(refs.values ()):
-        data.fetch_object_if_missing(oid, remote_path)
+def extract_lines(data):
+    """Parses Git pkt-line formatted payload from server response."""
+    lines = []
+    i = 0
+    while i < len(data):
+        line_length = int(data[i:i + 4], 16)
+        if line_length == 0:
+            lines.append(b'')
+            i += 4
+        else:
+            line = data[i + 4:i + line_length]
+            lines.append(line)
+            i += line_length
+    return lines
 
-    # Update local refs to match local server
-    for remote_name, value in refs.items():
-        refname = os.path.relpath(remote_name, REMOTE_REFS_BASE)
-        data.update_ref(f'{LOCAL_REFS_BASE}/{refname}', data.RefValue (symbolic=False, value=value))
+def build_lines_data(lines):
+    """Encodes raw byte lines into Git pkt-line format."""
+    result = []
+    for line in lines:
+        length = len(line) + 4
+        result.append(f'{length:04x}'.encode() + line)
+    result.append(b'0000')  # Flush packet
+    return b''.join(result)
 
-def push(remote_path, refname):
-    # Get refs data
-    remote_refs = _get_remote_refs(remote_path)
-    remote_ref = remote_refs.get(refname)
-    local_ref = data.get_ref(refname).value
-    assert local_ref
+def get_remote_master_hash(git_url, username=None, password=None):
+    """Queries the remote HTTP server to find the current hash of refs/heads/main or master."""
+    url = f"{git_url.rstrip('/')}/info/refs?service=git-receive-pack"
+    response = http_request(url, username, password)
+    lines = extract_lines(response)
+    
+    if not lines or lines[0] != b'# service=git-receive-pack\n':
+        raise ValueError("Invalid Git HTTP service response")
+        
+    for line in lines[2:]:
+        if not line:
+            continue
+        parts = line.split(b'\x00')[0].split()
+        if len(parts) == 2:
+            sha1, ref = parts[0].decode(), parts[1].decode()
+            if ref in ('refs/heads/main', 'refs/heads/master'):
+                return sha1 if sha1 != '0' * 40 else None
+    return None
 
-    assert not remote_ref or base.is_ancestor_of(local_ref, remote_ref)
+def _get_all_objects_for_commit(commit_oid):
+    """Recursively collects all commit, tree, and blob hashes reachable from a commit."""
+    objects = {commit_oid}
+    commit = base.get_commit(commit_oid)
+    
+    # Collect tree objects recursively
+    def _collect_tree(tree_oid):
+        objects.add(tree_oid)
+        for type_, oid, _ in base._iter_tree_entries(tree_oid):
+            if type_ == 'tree':
+                _collect_tree(oid)
+            else:
+                objects.add(oid)
 
-    # Compute which objects the server doesn't have
-    known_remote_refs = filter(data.object_exists, remote_refs.values())
-    remote_objects = set(base.iter_objects_in_commits(known_remote_refs))
-    local_objects = set(base.iter_objects_in_commits({local_ref}))
-    objects_to_push = local_objects - remote_objects
+    _collect_tree(commit.tree)
+    return objects
 
-    # Push missing objects
-    for oid in objects_to_push:
-        data.push_object(oid, remote_path)
+def find_missing_objects(local_sha1, remote_sha1):
+    """Calculates missing local objects that the remote repository does not have."""
+    local_objects = set()
+    for commit_oid in base.iter_commits_and_parents({local_sha1}):
+        local_objects.update(_get_all_objects_for_commit(commit_oid))
+        
+    if not remote_sha1:
+        return local_objects
+        
+    remote_objects = set()
+    for commit_oid in base.iter_commits_and_parents({remote_sha1}):
+        remote_objects.update(_get_all_objects_for_commit(commit_oid))
+        
+    return local_objects - remote_objects
 
-    # Update server ref to our value
-    with data.change_git_dir(remote_path):
-        data.update_ref(refname, data.RefValue(symbolic=False, value=local_ref))
+def encode_pack_object(oid):
+    """Encodes a single object into Git packfile format (Header + Zlib stream)."""
+    # Try fetching object type and data from pygit data store
+    obj_type, raw_data = _read_object_raw(oid)
+    type_num = OBJECT_TYPES[obj_type]
+    size = len(raw_data)
+    
+    byte = (type_num << 4) | (size & 0x0F)
+    size >>= 4
+    header = bytearray()
+    while size:
+        header.append(byte | 0x80)
+        byte = size & 0x7F
+        size >>= 7
+    header.append(byte)
+    
+    return bytes(header) + zlib.compress(raw_data)
 
-def _get_remote_refs(remote_path, prefix=''):
-    with data.change_git_dir(remote_path):
-        return {refname: ref.value for refname, ref in data.iter_refs(prefix)}
+def _read_object_raw(oid):
+    """Helper to retrieve raw type and payload for pack encoding."""
+    for possible_type in ['commit', 'tree', 'blob']:
+        try:
+            content = data.get_object(oid, expected=possible_type)
+            return possible_type, content
+        except Exception:
+            continue
+    raise ValueError(f"Unknown or corrupt object {oid}")
+
+def create_pack(objects):
+    """Generates a complete binary Git .pack file payload."""
+    header = struct.pack('!4sLL', b'PACK', 2, len(objects))
+    body = b''.join(encode_pack_object(o) for o in sorted(objects))
+    contents = header + body
+    sha1 = data.hash_object(contents, write=False)  # Checksum footer
+    return contents + bytes.fromhex(sha1)
+
+def push(git_url, username=None, password=None, ref_name='refs/heads/main'):
+    """Main push command to upload missing commits and objects over HTTP."""
+    local_sha1 = base.get_oid('@')
+    remote_sha1 = get_remote_master_hash(git_url, username, password)
+    
+    missing = find_missing_objects(local_sha1, remote_sha1)
+    if not missing:
+        print("Everything up-to-date")
+        return
+
+    print(f"Packing {len(missing)} objects...")
+    ref_line = f"{remote_sha1 or ('0' * 40)} {local_sha1} {ref_name}\x00 report-status".encode()
+    payload = build_lines_data([ref_line]) + create_pack(missing)
+    
+    url = f"{git_url.rstrip('/')}/git-receive-pack"
+    print(f"Pushing to {url}...")
+    response = http_request(url, username, password, data=payload)
+    
+    lines = extract_lines(response)
+    if lines and b'unpack ok' in lines[0]:
+        print(f"Successfully pushed to {git_url} ({ref_name})")
+    else:
+        print("Push failed or received unexpected server response.")

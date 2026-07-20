@@ -18,9 +18,7 @@ def compare_trees(*trees):
 def iter_changed_files(t_from, t_to):
     for path, o_from, o_to in compare_trees(t_from, t_to):
         if o_from != o_to:
-            action = ('new file' if not o_from else
-                      'deleted' if not o_to else
-                      'modified')
+            action = ('new file' if not o_from else 'deleted' if not o_to else 'modified')
             yield path, action
 
 
