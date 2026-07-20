@@ -63,22 +63,29 @@ def _get_ref_internal(ref, deref):
 
 def iter_refs(prefix='', deref=True):
     refs = ['HEAD', 'MERGE_HEAD']
+    
+    # Collect all reference files stored inside .pygit/refs
+    refs_dir = f'{GIT_DIR}/refs'
+    if os.path.exists(refs_dir):
+        for root, _, filenames in os.walk(refs_dir):
+            for filename in filenames:
+                relpath = os.path.relpath(os.path.join(root, filename), GIT_DIR)
+                # Crucial for Windows: convert backslashes to forward slashes
+                relpath = relpath.replace('\\', '/')
+                refs.append(relpath)
 
-    for root, _, filenames in os.walk (f'{GIT_DIR}/refs/'):
-        root = os.path.relpath (root, GIT_DIR)
-        refs.extend (f'{root}/{name}' for name in filenames)
-
+    # Yield each valid reference as a key-value pair
     for refname in refs:
         if not refname.startswith(prefix):
             continue
-    MERGE_HEAD = data.get_ref ('MERGE_HEAD').value
-    if MERGE_HEAD:
-        print(f'Merging with {MERGE_HEAD[:10]}')
+        ref = get_ref(refname, deref=deref)
+        if ref and ref.value:
+            yield refname, ref
 
 @contextmanager
 def get_index ():
     index = {}
-    
+
     if os.path.isfile (f'{GIT_DIR}/index'):
         with open (f'{GIT_DIR}/index') as f:
             index = json.load (f)

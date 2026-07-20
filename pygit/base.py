@@ -230,7 +230,7 @@ def create_tag(name, oid):
     data.update_ref(f'refs/tags/{name}', data.RefValue (symbolic=False, value=oid))
 
 def create_branch(name, oid):
-    data.update_ref(f'refs/heads/{name}', data.RefValue (symbolic=False, value=oid))
+    data.update_ref (f'refs/heads/{name}', data.RefValue (symbolic=False, value=oid))
 
 def iter_branch_names ():
     for refname, _ in data.iter_refs ('refs/heads/'):

@@ -146,7 +146,7 @@ def _print_commit(oid, commit, refs=None):
 def log(args):
     refs = {}
     for refname, ref in data.iter_refs():
-        refs.setdefault (ref.value, []).append(refname)
+        refs.setdefault(ref.value, []).append(refname)
 
     for oid in base.iter_commits_and_parents({args.oid}):
         commit = base.get_commit(oid)
