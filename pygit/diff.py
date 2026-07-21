@@ -1,3 +1,4 @@
+# Comparison and merging engine of your version control system
 import subprocess
 import difflib
 from collections import defaultdict
@@ -5,7 +6,7 @@ from tempfile import NamedTemporaryFile as Temp
 
 from . import data
 
-# takes a list of tree and returns them grouped by filename
+# takes a list of tree to compare them and returns them grouped by filename
 def compare_trees(*trees):
     entries = defaultdict(lambda: [None] * len (trees))
     for i, tree in enumerate(trees):
@@ -14,7 +15,7 @@ def compare_trees(*trees):
 
     for path, oids in entries.items():
         yield(path, *oids)
-
+# Checks the specific changes using compare_trees
 def iter_changed_files(t_from, t_to):
     for path, o_from, o_to in compare_trees(t_from, t_to):
         if o_from != o_to:
@@ -22,15 +23,15 @@ def iter_changed_files(t_from, t_to):
             yield path, action
 
 
-# displays all the chnaged files
+# displays all the changed files lines
 def diff_trees(t_from, t_to):
     output = b''
-    # returns all entries with different OID
     for path, o_from, o_to in compare_trees(t_from, t_to):
         if o_from != o_to:
             output += diff_blobs(o_from, o_to, path)
     return output
 
+# compares the raw file contents and calculates the lines added/removed 
 def diff_blobs(o_from, o_to, path=''):
     # Fetch content from database (or empty bytes if object doesn't exist)
     bytes_from = data.get_object(o_from) if o_from else b''
@@ -51,22 +52,22 @@ def diff_blobs(o_from, o_to, path=''):
     # Combine into a single string and return as bytes
     return ''.join(diff_lines).encode('utf-8')
 
+#  iterates through every file, merges their contents, hashing new result and saving it to db
 def merge_trees(t_base, t_HEAD, t_other):
     tree = {}
     for path, o_base, o_HEAD, o_other in compare_trees(t_base, t_HEAD, t_other):
         tree[path] = data.hash_object(merge_blobs (o_base, o_HEAD, o_other))
     return tree
 
-
+# Writes database contents out to temp files
 def merge_blobs(o_base, o_HEAD, o_other):
     with Temp() as f_base, Temp() as f_HEAD, Temp() as f_other:
 
-        # Write blobs to files
         for oid, f in ((o_base, f_base), (o_HEAD, f_HEAD), (o_other, f_other)):
             if oid:
                 f.write(data.get_object(oid))
                 f.flush()
-
+        # Resolves merge conflicts
         with subprocess.Popen (
             ['diff3', '-m',
              '-L', 'HEAD', f_HEAD.name,

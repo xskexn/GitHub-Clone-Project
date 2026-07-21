@@ -1,3 +1,4 @@
+# Handles all the direct reads and writes to the hard drive, managing the internal .pygit database.
 import hashlib
 import shutil
 import json
@@ -6,15 +7,16 @@ import os
 from collections import namedtuple
 from contextlib import contextmanager
 
-# Will be initialized in cli.main()
+
 GIT_DIR = None
 
 @contextmanager
+# Temporarily changes GIT_DIR to a different folder
 def change_git_dir(new_dir):
     global GIT_DIR
     old_dir = GIT_DIR
     GIT_DIR = f'{new_dir}/.pygit'
-    yield
+    yield 
     GIT_DIR = old_dir
 
 def init():
@@ -23,6 +25,7 @@ def init():
 
 RefValue = namedtuple ('RefValue', ['symbolic', 'value'])
 
+# CRUD operations for managing refs on the local repository
 def update_ref(ref, value, deref=True):
     ref =_get_ref_internal(ref, deref)[0]
     assert value.value
@@ -61,6 +64,7 @@ def _get_ref_internal(ref, deref):
 
     return ref, RefValue (symbolic=symbolic, value=value)
 
+# Scans .pygit/refs folder to find every branch and tag in the project
 def iter_refs(prefix='', deref=True):
     refs = ['HEAD', 'MERGE_HEAD']
     
@@ -70,7 +74,7 @@ def iter_refs(prefix='', deref=True):
         for root, _, filenames in os.walk(refs_dir):
             for filename in filenames:
                 relpath = os.path.relpath(os.path.join(root, filename), GIT_DIR)
-                # Crucial for Windows: convert backslashes to forward slashes
+                # Crucial for Windows: convert '\' to '/'
                 relpath = relpath.replace('\\', '/')
                 refs.append(relpath)
 
@@ -83,19 +87,23 @@ def iter_refs(prefix='', deref=True):
             yield refname, ref
 
 @contextmanager
+# Loads staging aread into memory as a python dictronary
 def get_index ():
     index = {}
 
     if os.path.isfile (f'{GIT_DIR}/index'):
         with open (f'{GIT_DIR}/index') as f:
-            index = json.load (f)
+            index = json.load (f) 
 
     yield index
 
+    # automatically saves any changes back to the disk when code finshes 
     with open (f'{GIT_DIR}/index', 'w') as f:
         json.dump (index, f)
 
+# hashes raw file data and saves it
 def hash_object(data, type_='blob'):
+    # prepends a header containing the object type, a null byte and actual file data.
     obj = type_.encode() + b'\x00' + data
     oid = hashlib.sha1(obj).hexdigest()
 
@@ -103,10 +111,11 @@ def hash_object(data, type_='blob'):
         out.write(obj)
     return oid
 
+# Reads file based on its 40-character oid.
 def get_object(oid, expected='blob'):
     with open (f'{GIT_DIR}/objects/{oid}', 'rb') as f:
         obj = f.read()
-
+    # Reverse hasing process repeating the previous split at the header and data
     type_, _, content = obj.partition(b'\x00')
     type_ = type_.decode()
 
@@ -117,6 +126,7 @@ def get_object(oid, expected='blob'):
 def object_exists(oid):
     return os.path.isfile(f'{GIT_DIR}/objects/{oid}')
 
+# Handle synchronizing objects between two different local repositories (Push & Fetch)
 def fetch_object_if_missing(oid, remote_git_dir):
     if object_exists(oid):
         return
