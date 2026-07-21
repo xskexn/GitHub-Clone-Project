@@ -15,18 +15,16 @@ import data
 class TestPyGitCore(unittest.TestCase):
 
     def setUp(self):
-        """Creates a temporary working directory and switches into it before every test."""
         self.test_dir = tempfile.mkdtemp()
         self.original_cwd = os.getcwd()
         os.chdir(self.test_dir)
 
     def tearDown(self):
-        """Restores original directory and cleans up the temporary directory after every test."""
         os.chdir(self.original_cwd)
         shutil.rmtree(self.test_dir)
 
     def test_init(self):
-        """Test repository initialization (.git directory structure)."""
+        """Test repository initialisation"""
         data.init()
         self.assertTrue(os.path.exists('.git'))
         self.assertTrue(os.path.exists(os.path.join('.git', 'objects')))
@@ -34,7 +32,7 @@ class TestPyGitCore(unittest.TestCase):
         self.assertTrue(os.path.exists(os.path.join('.git', 'HEAD')))
 
     def test_hash_object(self):
-        """Test hashing a file into an object (blob)."""
+        """Test hashing a file into an object"""
         data.init()
         file_path = 'hello.txt'
         content = b'Hello, PyGit World!\n'
@@ -44,14 +42,14 @@ class TestPyGitCore(unittest.TestCase):
 
         oid = data.hash_object(content, 'blob')
         self.assertIsNotNone(oid)
-        self.assertEqual(len(oid), 40)  # SHA-1 hash length
+        self.assertEqual(len(oid), 40)
         self.assertTrue(data.object_exists(oid))
 
     def test_write_tree_and_commit(self):
         """Test writing a tree and creating a commit."""
         data.init()
 
-        # Create sample workspace files
+        # Create sample workspace
         with open('file1.txt', 'w') as f:
             f.write("First file content")
         with open('file2.txt', 'w') as f:
@@ -90,7 +88,7 @@ class TestPyGitCore(unittest.TestCase):
         self.assertEqual(content, "Version 1")
 
     def test_tags(self):
-        """Test creating lightweight or annotated tags."""
+        """Test creating annotated tags."""
         data.init()
         with open('version.txt', 'w') as f:
             f.write("v1.0.0")

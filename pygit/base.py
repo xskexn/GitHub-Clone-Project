@@ -1,3 +1,6 @@
+"""Handles core logic layer of your version control system  
+ and the construction of the Directed Acyclic Graph (DAG) 
+and manipulates the local files on the drive"""
 import os
 import itertools
 import operator
@@ -12,6 +15,7 @@ def init ():
     data.init()
     data.update_ref('HEAD', data.RefValue (symbolic=True, value='refs/heads/master'))
 
+# converts incex into nested dictonary strucutre representing folder structure
 def write_tree():
     # Index is flat, we need it as a tree of dicts
     index_as_tree = {}
@@ -36,7 +40,7 @@ def write_tree():
                 type_ = 'blob'
                 oid = value
             entries.append((name, oid, type_))
-
+        # recursive helprer function that formats folder contents into a (type hash filename) before hashing it into the database. 
         tree = ''.join (f'{type_} {oid} {name}\n' for name, oid, type_ in sorted(entries))
         return data.hash_object(tree.encode(), 'tree')
 
@@ -126,7 +130,7 @@ def _checkout_index(index):
         with open (path, 'wb') as f:
             f.write(data.get_object(oid, 'blob'))
 
-# Build data structure that budles a directory snapshot to a historical timeline
+# Builds the commit text block and updates the current branch pointer.
 def commit(message):
     # writes tree <hash> containing the current workspace snapshot
     commit = f'tree {write_tree()}\n'
@@ -134,7 +138,8 @@ def commit(message):
     # If a previous commit exists in HEAD, it adds a line saying parent <hash>
     if HEAD:
         commit += f'parent {HEAD}\n'
-
+    
+    # builds the mathematical graph (DAG)
     MERGE_HEAD = data.get_ref('MERGE_HEAD').value
     if MERGE_HEAD:
         commit += f'parent {MERGE_HEAD}\n'
@@ -159,6 +164,7 @@ def get_branch_name():
 
 Commit = namedtuple('Commit', ['tree', 'parents', 'message'])
 
+# parses commit text file into py object
 def get_commit(oid):
     parents = []
     # reads commit by parsing the custom text layout 
@@ -178,9 +184,10 @@ def get_commit(oid):
     message = '\n'.join(lines)
     return Commit(tree=tree, parents=parents, message=message)
 
+# fetches the commit and restores its file 
 def checkout(name):
     oid = get_oid(name)
-    # gets paesed commit data
+    # gets parsed commit data
     commit = get_commit(oid)
     # cleans the project folder and unpackages the historical files
     read_tree(commit.tree)
@@ -190,7 +197,7 @@ def checkout(name):
         HEAD = data.RefValue(symbolic=True, value=f'refs/heads/{name}')
     else:
         HEAD = data.RefValue(symbolic=False, value=oid)
-
+    # unpacks files, updates the head to point to new location
     data.update_ref('HEAD', HEAD, deref=False)
 
 def reset(oid):
@@ -239,7 +246,7 @@ def iter_branch_names ():
 def is_branch (branch):
     return data.get_ref (f'refs/heads/{branch}').value is not None
 
-# used to build and draw cisual graphical DAG representation of the commit history
+# used to build and draw visual graphical DAG representation of the commit history
 def iter_commits_and_parents(oids):
     oids = deque(oids)
     visited = set()
@@ -258,8 +265,8 @@ def iter_commits_and_parents(oids):
         # Return other parents later
         oids.extend(commit.parents[1:])
 
-def iter_objects_in_commits (oids):
-    visited = set ()
+def iter_objects_in_commits(oids):
+    visited = set()
 
     def iter_objects_in_tree(oid):
         visited.add(oid) 
@@ -286,7 +293,7 @@ def iter_objects_in_commits (oids):
 def get_oid(name):
     # '@' shortcut to directly check HEAD
     if name == '@': name = 'HEAD'
-    # accepts alphanumeric input
+    # list of accepted alphanumeric input
     refs_to_try = [
         f'{name}',
         f'refs/{name}',
@@ -297,7 +304,7 @@ def get_oid(name):
     for ref in refs_to_try:
         if data.get_ref(ref, deref=False).value:
             return data.get_ref (ref).value
-    # accepts hexadecimal inputs
+    # if the list fails it check for hex inputs
     is_hex = all (c in string.hexdigits for c in name)
 
     if len(name) == 40 and is_hex:
@@ -305,29 +312,31 @@ def get_oid(name):
 
     assert False, f'Unknown name {name}'
 
+# Processes user provided files and directories and adds them to the index memory  
 def add(filenames):
-    def add_file (filename):
+    def add_file(filename):
         # Normalize path
-        filename = os.path.relpath (filename)
+        filename = os.path.relpath(filename)
         with open (filename, 'rb') as f:
-            oid = data.hash_object (f.read ())
+            oid = data.hash_object (f.read())
         index[filename] = oid
 
-    def add_directory (dirname):
-        for root, _, filenames in os.walk (dirname):
+    def add_directory(dirname):
+        for root, _, filenames in os.walk(dirname):
             for filename in filenames:
                 # Normalize path
-                path = os.path.relpath (f'{root}/{filename}')
-                if is_ignored (path) or not os.path.isfile (path):
+                path = os.path.relpath(f'{root}/{filename}')
+                if is_ignored(path) or not os.path.isfile (path):
                     continue
-                add_file (path)
+                add_file(path)
 
     with data.get_index() as index:
         for name in filenames:
-            if os.path.isfile (name):
-                add_file (name)
-            elif os.path.isdir (name):
-                add_directory (name)
+            if os.path.isfile(name):
+                add_file(name)
+            elif os.path.isdir(name):
+                add_directory(name)
 
+# checks path against .pygit folder 
 def is_ignored(path):
     return '.pygit' in Path(path).parts
