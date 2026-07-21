@@ -1,3 +1,4 @@
+# This section handles the raw HTTP requests to the remote server, including passing usernames and passwords.
 import struct
 import zlib
 import urllib.request
@@ -12,14 +13,16 @@ OBJECT_TYPES = {
     'tag': 4,
 }
 
+# A wrapper around python built-in around urllib that securely transmits data 
 def http_request(url, username=None, password=None, data=None):
-    """Executes an HTTP request with optional Basic Authentication."""
+    # Executes an HTTP request with optional authentication
     password_manager = urllib.request.HTTPPasswordMgrWithDefaultRealm()
     if username and password:
         password_manager.add_password(None, url, username, password)
     auth_handler = urllib.request.HTTPBasicAuthHandler(password_manager)
     opener = urllib.request.build_opener(auth_handler)
     
+
     req = urllib.request.Request(url, data=data)
     if data:
         req.add_header('Content-Type', 'application/x-git-receive-pack-request')
@@ -28,10 +31,11 @@ def http_request(url, username=None, password=None, data=None):
         return f.read()
 
 def extract_lines(data):
-    """Parses Git pkt-line formatted payload from server response."""
+    # Parses incoming pkt-line formatted payload from server response
     lines = []
     i = 0
     while i < len(data):
+        # reads first 4 bytes and convers them form hext to int
         line_length = int(data[i:i + 4], 16)
         if line_length == 0:
             lines.append(b'')
@@ -43,16 +47,18 @@ def extract_lines(data):
     return lines
 
 def build_lines_data(lines):
-    """Encodes raw byte lines into Git pkt-line format."""
+    # Encodes outgoing raw byte lines into Git pkt-line hex format
     result = []
     for line in lines:
         length = len(line) + 4
         result.append(f'{length:04x}'.encode() + line)
-    result.append(b'0000')  # Flush packet
+    # Flush packet, stop signal for the server
+    result.append(b'0000')  
     return b''.join(result)
 
+# Syncronisation hustory engine
 def get_remote_master_hash(git_url, username=None, password=None):
-    """Queries the remote HTTP server to find the current hash of refs/heads/main or master."""
+    # Queries the remote HTTP server to find the current hash of refs/heads/main or master
     url = f"{git_url.rstrip('/')}/info/refs?service=git-receive-pack"
     response = http_request(url, username, password)
     lines = extract_lines(response)
@@ -71,7 +77,7 @@ def get_remote_master_hash(git_url, username=None, password=None):
     return None
 
 def _get_all_objects_for_commit(commit_oid):
-    """Recursively collects all commit, tree, and blob hashes reachable from a commit."""
+    # Recursively collects all commit, tree, and blob hashes reachable from a commit
     objects = {commit_oid}
     commit = base.get_commit(commit_oid)
     
@@ -88,7 +94,7 @@ def _get_all_objects_for_commit(commit_oid):
     return objects
 
 def find_missing_objects(local_sha1, remote_sha1):
-    """Calculates missing local objects that the remote repository does not have."""
+    # Calculates missing local objects that the remote repository does not have
     local_objects = set()
     for commit_oid in base.iter_commits_and_parents({local_sha1}):
         local_objects.update(_get_all_objects_for_commit(commit_oid))
@@ -99,16 +105,17 @@ def find_missing_objects(local_sha1, remote_sha1):
     remote_objects = set()
     for commit_oid in base.iter_commits_and_parents({remote_sha1}):
         remote_objects.update(_get_all_objects_for_commit(commit_oid))
-        
+    # Calculates the exact list of files to upload with set difference operaion
     return local_objects - remote_objects
 
+# builds binary header for a file using bitwise operations
 def encode_pack_object(oid):
-    """Encodes a single object into Git packfile format (Header + Zlib stream)."""
     # Try fetching object type and data from pygit data store
     obj_type, raw_data = _read_object_raw(oid)
     type_num = OBJECT_TYPES[obj_type]
     size = len(raw_data)
     
+    # variable lenght interger encoder used to package object type and size into a single byte
     byte = (type_num << 4) | (size & 0x0F)
     size >>= 4
     header = bytearray()
@@ -121,7 +128,7 @@ def encode_pack_object(oid):
     return bytes(header) + zlib.compress(raw_data)
 
 def _read_object_raw(oid):
-    """Helper to retrieve raw type and payload for pack encoding."""
+    # Retrieves raw type and payload for encoding
     for possible_type in ['commit', 'tree', 'blob']:
         try:
             content = data.get_object(oid, expected=possible_type)
@@ -130,16 +137,16 @@ def _read_object_raw(oid):
             continue
     raise ValueError(f"Unknown or corrupt object {oid}")
 
+# Generates a complete binary Git .pack file payload
 def create_pack(objects):
-    """Generates a complete binary Git .pack file payload."""
     header = struct.pack('!4sLL', b'PACK', 2, len(objects))
     body = b''.join(encode_pack_object(o) for o in sorted(objects))
     contents = header + body
-    sha1 = data.hash_object(contents, write=False)  # Checksum footer
+    sha1 = data.hash_object(contents, write=False)
     return contents + bytes.fromhex(sha1)
 
+# Main push command to upload missing commits and objects over HTTP by packing them into a binary .pack
 def push(git_url, username=None, password=None, ref_name='refs/heads/main'):
-    """Main push command to upload missing commits and objects over HTTP."""
     local_sha1 = base.get_oid('@')
     remote_sha1 = get_remote_master_hash(git_url, username, password)
     
